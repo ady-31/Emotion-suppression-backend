@@ -1,12 +1,9 @@
 import os
-import sys
 import numpy as np
 import torch
 import torch.nn as nn
 
-BASE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+BASE_DIR = r"G:\NEW Emotion_Suppression_Project-main\Emotion_Suppression_Project-main"
 DATA_DIR = os.path.join(BASE_DIR, "data", "processed")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "suppression_model.pth")
 

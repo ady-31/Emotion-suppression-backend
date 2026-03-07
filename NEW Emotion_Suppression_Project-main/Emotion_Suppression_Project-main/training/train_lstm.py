@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import os
 
-BASE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+BASE_DIR = r"G:\NEW Emotion_Suppression_Project-main\Emotion_Suppression_Project-main"
 DATA_DIR = os.path.join(BASE_DIR, "data", "processed")
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 

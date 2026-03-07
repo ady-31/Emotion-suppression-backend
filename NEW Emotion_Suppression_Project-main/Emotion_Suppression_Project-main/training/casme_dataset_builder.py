@@ -1,13 +1,9 @@
 import os
-import sys
 import numpy as np
-
-BASE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
-
 from preprocessing.build_feature_sequence import build_sequences
 from preprocessing.compute_suppression_score import compute_score
+
+BASE_DIR = r"G:\NEW Emotion_Suppression_Project-main\Emotion_Suppression_Project-main"
 CSV_DIR = os.path.join(BASE_DIR, "data", "raw_csv")
 SAVE_DIR = os.path.join(BASE_DIR, "data", "processed")
 

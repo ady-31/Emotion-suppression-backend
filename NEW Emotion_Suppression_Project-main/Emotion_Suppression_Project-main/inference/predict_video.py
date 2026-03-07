@@ -1,13 +1,8 @@
 import os
-import sys
 import numpy as np
 import torch
 import torch.nn as nn
 import pandas as pd
-
-BASE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
 
 from emotion.detect_emotion import detect_emotions_from_video
 
@@ -16,6 +11,8 @@ from preprocessing.build_feature_sequence import build_sequences
 
 from speech.extract_audio import extract_audio
 from speech.detect_speech_events import detect_speech_events
+
+BASE_DIR = r"G:\NEW Emotion_Suppression_Project-main\Emotion_Suppression_Project-main"
 MODEL_PATH = os.path.join(BASE_DIR, "models", "suppression_model.pth")
 TEMP_OUTPUT = os.path.join(BASE_DIR, "data", "temp_csv")
 
@@ -192,8 +189,8 @@ def predict_video(video_path):
 if __name__ == "__main__":
 
     # test_video = r"G:\capstone data\CASME II\CASME2_Compressed video\CASME2_compressed\sub01\EP02_01f.avi"
-    # test_video = os.path.join(BASE_DIR, "sample test", "sample_ravdess.mp4")
-    test_video = os.path.join(BASE_DIR, "sample test", "EP02_01f.avi")
+    test_video = r"G:\NEW Emotion_Suppression_Project-main\Emotion_Suppression_Project-main\sample test\sample_ravdess.mp4"
+    test_video = r"G:\NEW Emotion_Suppression_Project-main\Emotion_Suppression_Project-main\sample test\EP02_01f.avi"
 
 
     raw_score, norm_score, level, \
