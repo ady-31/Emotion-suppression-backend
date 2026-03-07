@@ -1,0 +1,10 @@
+opencv-python
+mediapipe
+deepface
+numpy
+pandas
+torch
+torchvision
+scikit-learn
+matplotlib
+tqdm

@@ -1,0 +1,73 @@
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# ===============================
+# Virtual Environment
+# ===============================
+.venv/
+venv/
+env/
+
+# ===============================
+# OS Files
+# ===============================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===============================
+# IDE / Editor
+# ===============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===============================
+# Temporary Project Outputs
+# ===============================
+data/temp_csv/
+data/temp_audio.wav
+data/*.wav
+data/*.mp4
+data/*.avi
+data/*.png
+data/*.jpg
+
+# ===============================
+# Large Model Files (optional)
+# ===============================
+# models/*.pth  (un-ignored for Render deployment)
+# models/*.pt
+models/*.h5
+
+# ===============================
+# OpenFace (DO NOT PUSH)
+# ===============================
+OpenFace*/
+*.exe
+*.dll
+
+# ===============================
+# Logs
+# ===============================
+*.log
+
+# ===============================
+# Jupyter
+# ===============================
+.ipynb_checkpoints/
+
+# ===============================
+# System Cache
+# ===============================
+.cache/

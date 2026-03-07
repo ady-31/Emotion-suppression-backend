@@ -1,0 +1,49 @@
+# Virtual environments
+venv/
+env/
+.venv/
+backend/venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.log
+
+# Data files
+*.npy
+*.npz
+data/
+
+# Environment variables
+.env
+.env.*
+
+# Uploaded / temp videos
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Deepface model cache
+.deepface/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Distribution / build
+dist/
+build/
+*.egg-info/

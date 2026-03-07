@@ -1,0 +1,10 @@
+Input:G:\capstone data\CASME II\CASME2_Compressed video\CASME2_compressed\sub23\EP05_24f.avi
+Input full path:G:\capstone data\CASME II\CASME2_Compressed video\CASME2_compressed\sub23\EP05_24f.avi
+Camera parameters:500,500,320,240
+Output csv:EP05_24f.csv
+Gaze: 0
+AUs: 1
+Landmarks 2D: 0
+Landmarks 3D: 0
+Pose: 0
+Shape parameters: 0

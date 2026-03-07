@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pymongo
+pydantic
+numpy
+pandas
+torch
+torchvision
+deepface
+opencv-python
+moviepy
+librosa
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==4.0.1
