@@ -110,7 +110,10 @@ def extract_aus(video_path: str, output_dir: str) -> None:
     frame_num = 0
 
     import mediapipe as mp
-    _mp_face_mesh = mp.solutions.face_mesh
+    try:
+        _mp_face_mesh = mp.solutions.face_mesh
+    except AttributeError:
+        from mediapipe.python.solutions import face_mesh as _mp_face_mesh
 
     with _mp_face_mesh.FaceMesh(
         static_image_mode=False,
