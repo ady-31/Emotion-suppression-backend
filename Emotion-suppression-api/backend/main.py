@@ -270,6 +270,8 @@ async def analyze_video(
         return result
     except RuntimeError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         try:
             os.unlink(tmp.name)

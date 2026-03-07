@@ -89,6 +89,9 @@ def run_video_pipeline(video_path: str) -> dict:
         # 3. AU-based hidden emotion estimate ----------------------------------
         df       = pd.read_csv(csv_path)
         au_cols  = [c for c in df.columns if "_r" in c]
+        # Strip whitespace from column names so .get() lookups always match
+        df.columns = df.columns.str.strip()
+        au_cols  = [c for c in df.columns if "_r" in c]
         au_means = df[au_cols].mean()
 
         emotion_scores = {
