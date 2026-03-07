@@ -43,7 +43,7 @@ MONGO_URI = os.getenv(
 )
 mongo_client        = MongoClient(MONGO_URI)
 db                  = mongo_client["emotion_suppression"]
-users_collection    = db["users"]       # subject details (name/email/phone/age/gender)
+users_collection    = db["users"]       # subject details (name/email/age/gender)
 accounts_collection = db["accounts"]    # login credentials
 results_collection  = db["results"]     # per-user analysis results
 
@@ -92,7 +92,6 @@ async def _require_auth(token: str = Depends(oauth2_scheme)):
 class UserRegistration(BaseModel):
     name:   str
     email:  str
-    phone:  Optional[str] = None
     age:    Optional[str] = ""
     gender: Optional[str] = ""
 
@@ -135,7 +134,7 @@ async def signup(body: AccountSignup):
         {"email": body.email},
         {"$setOnInsert": {
             "name": body.name, "email": body.email,
-            "phone": "", "age": "", "gender": "",
+            "age": "", "gender": "",
             "created_at": datetime.utcnow(),
         }},
         upsert=True,
