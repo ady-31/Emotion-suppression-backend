@@ -12,9 +12,6 @@ import os
 import cv2
 import numpy as np
 import pandas as pd
-import mediapipe as mp
-
-_mp_face_mesh = mp.solutions.face_mesh
 
 # ── Landmark helpers ───────────────────────────────────────────────────────────
 # MediaPipe Face Mesh indices used to approximate each AU.
@@ -111,6 +108,9 @@ def extract_aus(video_path: str, output_dir: str) -> None:
 
     all_rows: list[dict] = []
     frame_num = 0
+
+    import mediapipe as mp
+    _mp_face_mesh = mp.solutions.face_mesh
 
     with _mp_face_mesh.FaceMesh(
         static_image_mode=False,
