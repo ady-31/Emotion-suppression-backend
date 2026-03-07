@@ -92,7 +92,7 @@ async def _require_auth(token: str = Depends(oauth2_scheme)):
 class UserRegistration(BaseModel):
     name:   str
     email:  str
-    phone:  str
+    phone:  Optional[str] = None
     age:    Optional[str] = ""
     gender: Optional[str] = ""
 
