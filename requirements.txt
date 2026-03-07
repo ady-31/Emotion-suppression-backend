@@ -25,7 +25,7 @@ opencv-python-headless
 tf-keras
 tensorflow
 deepface
-mediapipe
+mediapipe==0.10.14
 
 # -- Audio / Speech --
 moviepy
