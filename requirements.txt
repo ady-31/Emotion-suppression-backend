@@ -22,6 +22,7 @@ torchvision
 
 # -- Computer Vision / Emotion --
 opencv-python-headless
+tensorflow-cpu
 deepface
 mediapipe
 
