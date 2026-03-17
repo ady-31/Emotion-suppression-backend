@@ -21,6 +21,8 @@ from pydantic import BaseModel
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 from typing import Optional
+from bson import ObjectId
+from bson.errors import InvalidId
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 import tempfile
@@ -61,14 +63,81 @@ app.add_middleware(
 
 # ── Auth helpers ───────────────────────────────────────────────────────────────
 def _verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    if not hashed:
+        return False
+    try:
+        return pwd_context.verify(plain, hashed)
+    except Exception:
+        return False
 
 def _hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
-def _create_token(email: str) -> str:
+def _normalize_role(role: Optional[str]) -> str:
+    return "admin" if (role or "").lower() == "admin" else "user"
+
+def _create_token(email: str, role: str = "user") -> str:
     expire = datetime.utcnow() + timedelta(minutes=TOKEN_TTL_MINUTES)
-    return jwt.encode({"sub": email, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+    payload = {"sub": email, "role": _normalize_role(role), "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def _serialize_result(doc: dict, include_details: bool = False) -> dict:
+    item = {
+        "result_id": str(doc.get("_id")) if doc.get("_id") else None,
+        "email": doc.get("email"),
+        "file_name": doc.get("file_name"),
+        "suppression_score": doc.get("suppression_score"),
+        "normalized_score": doc.get("normalized_score"),
+        "level": doc.get("level"),
+        "dominant_emotion": doc.get("dominant_emotion"),
+        "suppressed_emotion": doc.get("suppressed_emotion"),
+        "files_processed": doc.get("files_processed", 1),
+        "created_at": doc.get("created_at"),
+    }
+    if include_details:
+        item["timeline"] = doc.get("timeline", [])
+        item["latency_events"] = doc.get("latency_events", [])
+    return item
+
+def _resolve_user_email(user_id: str) -> Optional[str]:
+    if "@" in user_id:
+        return user_id
+
+    try:
+        obj_id = ObjectId(user_id)
+    except (InvalidId, TypeError):
+        return None
+
+    acct = accounts_collection.find_one({"_id": obj_id}, {"email": 1})
+    if acct and acct.get("email"):
+        return acct["email"]
+
+    profile = users_collection.find_one({"_id": obj_id}, {"email": 1})
+    if profile and profile.get("email"):
+        return profile["email"]
+
+    return None
+
+def _is_admin(user: dict) -> bool:
+    return _normalize_role(user.get("role")) == "admin"
+
+def _require_owner_or_admin(current_user: dict, target_email: str):
+    if _is_admin(current_user):
+        return
+    if (current_user.get("email") or "").lower() != (target_email or "").lower():
+        raise HTTPException(status_code=403, detail="Forbidden: cannot access other users' results")
+
+def _list_results_for_email(email: str, include_details: bool = False) -> list[dict]:
+    projection = {"timeline": 0, "latency_events": 0} if not include_details else None
+    cursor = results_collection.find({"email": email}, projection).sort("created_at", -1)
+    return [_serialize_result(doc, include_details=include_details) for doc in cursor]
+
+def _find_result_by_id(result_id: str) -> Optional[dict]:
+    try:
+        obj_id = ObjectId(result_id)
+    except (InvalidId, TypeError):
+        return None
+    return results_collection.find_one({"_id": obj_id})
 
 async def _get_current_user(token: str = Depends(oauth2_scheme)):
     """Returns account dict or None if unauthenticated."""
@@ -79,7 +148,17 @@ async def _get_current_user(token: str = Depends(oauth2_scheme)):
         email: str = payload.get("sub")
         if not email:
             return None
-        return accounts_collection.find_one({"email": email}, {"_id": 0, "password_hash": 0})
+
+        acct = accounts_collection.find_one({"email": email}, {"password_hash": 0})
+        if not acct:
+            return None
+
+        return {
+            "account_id": str(acct.get("_id")) if acct.get("_id") else None,
+            "name": acct.get("name", ""),
+            "email": acct.get("email", ""),
+            "role": _normalize_role(acct.get("role")),
+        }
     except JWTError:
         return None
 
@@ -88,6 +167,11 @@ async def _require_auth(token: str = Depends(oauth2_scheme)):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user
+
+async def _require_admin(current_user=Depends(_require_auth)):
+    if not _is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 class UserRegistration(BaseModel):
@@ -104,6 +188,11 @@ class AccountSignup(BaseModel):
 class AccountLogin(BaseModel):
     email:    str
     password: str
+
+class AdminAccountRegister(BaseModel):
+    email:    str
+    password: str
+    name:     Optional[str] = None
 
 
 # ── Routes: Health ─────────────────────────────────────────────────────────────
@@ -127,6 +216,7 @@ async def signup(body: AccountSignup):
         "name":          body.name,
         "email":         body.email,
         "password_hash": _hash_password(body.password),
+        "role":          "user",
         "created_at":    datetime.utcnow(),
     })
 
@@ -141,18 +231,69 @@ async def signup(body: AccountSignup):
         upsert=True,
     )
 
-    token = _create_token(body.email)
-    return {"token": token, "user": {"name": body.name, "email": body.email}}
+    token = _create_token(body.email, role="user")
+    return {
+        "token": token,
+        "user": {"name": body.name, "email": body.email, "role": "user"},
+    }
 
 
 @app.post("/auth/login")
 async def login(body: AccountLogin):
     acct = accounts_collection.find_one({"email": body.email})
-    if not acct or not _verify_password(body.password, acct["password_hash"]):
+    if not acct or not _verify_password(body.password, acct.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = _create_token(body.email)
-    return {"token": token, "user": {"name": acct["name"], "email": acct["email"]}}
+    role = _normalize_role(acct.get("role"))
+    token = _create_token(body.email, role=role)
+    return {
+        "token": token,
+        "user": {
+            "name": acct.get("name", ""),
+            "email": acct["email"],
+            "role": role,
+        },
+    }
+
+
+@app.post("/api/admin/register")
+async def admin_register(body: AdminAccountRegister):
+    if accounts_collection.find_one({"email": body.email}):
+        raise HTTPException(status_code=400, detail="An account with this email already exists")
+
+    admin_name = (body.name or body.email.split("@")[0]).strip() or "admin"
+    accounts_collection.insert_one({
+        "name":          admin_name,
+        "email":         body.email,
+        "password_hash": _hash_password(body.password),
+        "role":          "admin",
+        "created_at":    datetime.utcnow(),
+    })
+
+    token = _create_token(body.email, role="admin")
+    return {
+        "token": token,
+        "admin": {"name": admin_name, "email": body.email, "role": "admin"},
+    }
+
+
+@app.post("/api/admin/login")
+async def admin_login(body: AccountLogin):
+    acct = accounts_collection.find_one({"email": body.email})
+    is_valid = acct and _verify_password(body.password, acct.get("password_hash", ""))
+    is_admin = bool(acct) and _normalize_role(acct.get("role")) == "admin"
+    if not is_valid or not is_admin:
+        raise HTTPException(status_code=401, detail="Invalid admin email or password")
+
+    token = _create_token(body.email, role="admin")
+    return {
+        "token": token,
+        "admin": {
+            "name": acct.get("name", ""),
+            "email": acct["email"],
+            "role": "admin",
+        },
+    }
 
 
 @app.get("/me")
@@ -179,49 +320,103 @@ async def register_user(user: UserRegistration):
 # ── Routes: Analysis Results ───────────────────────────────────────────────────
 @app.get("/my-results")
 async def get_my_results(current_user=Depends(_require_auth)):
-    docs = list(results_collection.find(
-        {"email": current_user["email"]},
-        {"_id": 0, "timeline": 0, "latency_events": 0}
-    ).sort("created_at", -1))
+    docs = _list_results_for_email(current_user["email"], include_details=False)
     return {"results": docs}
 
 
 @app.get("/my-results/full/{result_index}")
 async def get_my_result_detail(result_index: int, current_user=Depends(_require_auth)):
     """Get a single full result (including timeline + latency) by position (0-based)."""
-    doc = list(results_collection.find(
-        {"email": current_user["email"]}, {"_id": 0}
-    ).sort("created_at", -1).skip(result_index).limit(1))
-    if not doc:
+    docs = list(
+        results_collection.find({"email": current_user["email"]})
+        .sort("created_at", -1)
+        .skip(result_index)
+        .limit(1)
+    )
+    if not docs:
         raise HTTPException(status_code=404, detail="Result not found")
-    return doc[0]
+    return _serialize_result(docs[0], include_details=True)
 
 
-@app.get("/users")
-async def get_all_users(_current_user=Depends(_require_auth)):
-    """Return all registered accounts with their subject details and result counts."""
-    accounts = list(accounts_collection.find({}, {"_id": 0, "password_hash": 0}))
-    enriched = []
+@app.get("/api/admin/users")
+async def get_admin_users(_admin_user=Depends(_require_admin)):
+    """Return all non-admin user accounts with profile info and summarized results."""
+    accounts = list(accounts_collection.find({}, {"password_hash": 0}))
+    users_payload = []
     for acct in accounts:
-        subject = users_collection.find_one({"email": acct["email"]}, {"_id": 0}) or {}
-        user_results = list(results_collection.find(
-            {"email": acct["email"]},
-            {"_id": 0, "timeline": 0, "latency_events": 0}
-        ).sort("created_at", -1))
-        enriched.append({
-            **acct,
+        role = _normalize_role(acct.get("role"))
+        if role == "admin":
+            continue
+
+        email = acct.get("email", "")
+        subject = users_collection.find_one({"email": email}, {"_id": 0}) or {}
+        user_results = _list_results_for_email(email, include_details=False)
+
+        users_payload.append({
+            "user_id":      str(acct.get("_id")) if acct.get("_id") else None,
+            "name":         acct.get("name", ""),
+            "email":        email,
+            "role":         role,
             "subject":      subject,
             "results":      user_results,
             "result_count": len(user_results),
         })
-    return {"users": enriched}
+    return users_payload
+
+
+@app.get("/api/results/user/{user_id}")
+async def get_results_for_user(user_id: str, current_user=Depends(_require_auth)):
+    """Get summarized results for a user. Allowed for owner or admin."""
+    user_email = _resolve_user_email(user_id)
+    if not user_email:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    _require_owner_or_admin(current_user, user_email)
+    return {"results": _list_results_for_email(user_email, include_details=False)}
+
+
+@app.get("/api/results/detail/{result_id}")
+async def get_result_detail(result_id: str, current_user=Depends(_require_auth)):
+    """Get a specific full result by result id. Allowed for owner or admin."""
+    doc = _find_result_by_id(result_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Result not found")
+
+    _require_owner_or_admin(current_user, doc.get("email", ""))
+    return _serialize_result(doc, include_details=True)
+
+
+@app.get("/api/results/{identifier}")
+async def get_results_or_detail(identifier: str, current_user=Depends(_require_auth)):
+    """
+    Compatibility route:
+    - If `identifier` is a valid result id, return one detailed result.
+    - Otherwise treat `identifier` as a user id/email and return that user's results.
+    """
+    doc = _find_result_by_id(identifier)
+    if doc:
+        _require_owner_or_admin(current_user, doc.get("email", ""))
+        return _serialize_result(doc, include_details=True)
+
+    user_email = _resolve_user_email(identifier)
+    if not user_email:
+        raise HTTPException(status_code=404, detail="Result or user not found")
+
+    _require_owner_or_admin(current_user, user_email)
+    return {"results": _list_results_for_email(user_email, include_details=False)}
+
+
+@app.get("/users")
+async def get_all_users(_admin_user=Depends(_require_admin)):
+    """Return all registered accounts with their subject details and result counts."""
+    users_payload = await get_admin_users(_admin_user)
+    return {"users": users_payload}
 
 
 @app.get("/users/{email}/results")
-async def get_user_results(email: str, _current_user=Depends(_require_auth)):
-    docs = list(results_collection.find(
-        {"email": email}, {"_id": 0}
-    ).sort("created_at", -1))
+async def get_user_results(email: str, current_user=Depends(_require_auth)):
+    _require_owner_or_admin(current_user, email)
+    docs = _list_results_for_email(email, include_details=True)
     return {"results": docs}
 
 
