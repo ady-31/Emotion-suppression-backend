@@ -139,6 +139,69 @@ def _find_result_by_id(result_id: str) -> Optional[dict]:
         return None
     return results_collection.find_one({"_id": obj_id})
 
+def _build_admin_users_payload() -> list[dict]:
+    """Build merged user list from login accounts and subject profiles (excluding admins)."""
+    accounts = list(accounts_collection.find({}, {"password_hash": 0}))
+
+    admin_emails: set[str] = set()
+    users_by_email: dict[str, dict] = {}
+
+    for acct in accounts:
+        email = (acct.get("email") or "").strip()
+        if not email:
+            continue
+
+        email_key = email.lower()
+        role = _normalize_role(acct.get("role"))
+        if role == "admin":
+            admin_emails.add(email_key)
+            continue
+
+        users_by_email[email_key] = {
+            "user_id": str(acct.get("_id")) if acct.get("_id") else None,
+            "name": acct.get("name", ""),
+            "email": email,
+            "role": role,
+        }
+
+    # Include legacy profile-only users (created via /register-user) if no account exists yet.
+    for profile in users_collection.find({}, {"_id": 1, "name": 1, "email": 1}):
+        email = (profile.get("email") or "").strip()
+        if not email:
+            continue
+
+        email_key = email.lower()
+        if email_key in admin_emails:
+            continue
+
+        existing = users_by_email.get(email_key)
+        if existing:
+            if not existing.get("name"):
+                existing["name"] = profile.get("name", "")
+            continue
+
+        users_by_email[email_key] = {
+            "user_id": str(profile.get("_id")) if profile.get("_id") else None,
+            "name": profile.get("name", ""),
+            "email": email,
+            "role": "user",
+        }
+
+    users_payload = []
+    for user in sorted(users_by_email.values(), key=lambda item: (item.get("email") or "").lower()):
+        email = user.get("email", "")
+        subject = users_collection.find_one({"email": email}, {"_id": 0}) or {}
+        user_results = _list_results_for_email(email, include_details=False)
+
+        users_payload.append({
+            **user,
+            "subject": subject,
+            "results": user_results,
+            "result_count": len(user_results),
+        })
+
+    return users_payload
+
 async def _get_current_user(token: str = Depends(oauth2_scheme)):
     """Returns account dict or None if unauthenticated."""
     if not token:
@@ -340,28 +403,15 @@ async def get_my_result_detail(result_index: int, current_user=Depends(_require_
 
 @app.get("/api/admin/users")
 async def get_admin_users(_admin_user=Depends(_require_admin)):
-    """Return all non-admin user accounts with profile info and summarized results."""
-    accounts = list(accounts_collection.find({}, {"password_hash": 0}))
-    users_payload = []
-    for acct in accounts:
-        role = _normalize_role(acct.get("role"))
-        if role == "admin":
-            continue
+    """Return all non-admin users for admin dashboard consumption."""
+    users_payload = _build_admin_users_payload()
+    return {"users": users_payload, "count": len(users_payload)}
 
-        email = acct.get("email", "")
-        subject = users_collection.find_one({"email": email}, {"_id": 0}) or {}
-        user_results = _list_results_for_email(email, include_details=False)
 
-        users_payload.append({
-            "user_id":      str(acct.get("_id")) if acct.get("_id") else None,
-            "name":         acct.get("name", ""),
-            "email":        email,
-            "role":         role,
-            "subject":      subject,
-            "results":      user_results,
-            "result_count": len(user_results),
-        })
-    return users_payload
+@app.get("/api/admin/users/list")
+async def get_admin_users_list(_admin_user=Depends(_require_admin)):
+    """Legacy list-only response for older clients."""
+    return _build_admin_users_payload()
 
 
 @app.get("/api/results/user/{user_id}")
@@ -409,7 +459,7 @@ async def get_results_or_detail(identifier: str, current_user=Depends(_require_a
 @app.get("/users")
 async def get_all_users(_admin_user=Depends(_require_admin)):
     """Return all registered accounts with their subject details and result counts."""
-    users_payload = await get_admin_users(_admin_user)
+    users_payload = _build_admin_users_payload()
     return {"users": users_payload}
 
 
