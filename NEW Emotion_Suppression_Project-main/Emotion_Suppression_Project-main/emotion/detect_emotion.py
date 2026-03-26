@@ -1,8 +1,11 @@
-from deepface import DeepFace
 import cv2
-import numpy as np
 
 def detect_emotions_from_video(video_path):
+    try:
+        from deepface import DeepFace
+    except Exception:
+        # If DeepFace/TensorFlow is not available, skip visible emotion extraction.
+        return []
 
     cap = cv2.VideoCapture(video_path)
 
@@ -23,7 +26,7 @@ def detect_emotions_from_video(video_path):
             emotion_probs = result[0]["emotion"]
             emotions_over_time.append(emotion_probs)
 
-        except:
+        except Exception:
             continue
 
     cap.release()
